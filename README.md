@@ -1,527 +1,218 @@
-# SmartRetail-Sync 🚀
+# SmartRetail-Sync
 
-**Un projet d'automatisation complète du suivi des stocks et des ventes avec Azure & Power BI**
+SmartRetail-Sync est un projet data engineering qui synchronise des ventes et des stocks en temps reel avec une API FastAPI, une base PostgreSQL en modele etoile, une interface pgAdmin et une preparation Power BI.
 
-![Python](https://img.shields.io/badge/python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue) ![Azure](https://img.shields.io/badge/Azure-Cloud-blue) ![License](https://img.shields.io/badge/license-MIT-green)
+Le projet est pret a etre versionne sur GitHub sans les fichiers Power BI lourds ou generes.
 
----
+## Objectif
 
-## 🎯 Objectif
+Le projet permet de :
 
-SmartRetail-Sync est un système complet de gestion des stocks et des ventes en temps réel, conçu pour :
+- ingerer des ventes via une API REST FastAPI ;
+- stocker les donnees dans PostgreSQL avec un schema analytique ;
+- exposer des vues SQL pretes pour Power BI ;
+- suivre les stocks faibles et les alertes de reapprovisionnement ;
+- preparer une architecture cloud Azure avec Key Vault, App Service et PostgreSQL Flexible Server.
 
-- **Ingérer** les données de ventes en temps réel via une API FastAPI
-- **Stocker** les données dans une structure en étoile (Star Schema) PostgreSQL
-- **Sécuriser** les credentials avec Azure Key Vault
-- **Héberger** l'API sur Azure App Service avec Managed Identity
-- **Analyser** avec Power BI pour des insights décisionnels
+## Architecture
 
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                   Power BI Dashboard                     │
-│              (Reporting & Analytics)                     │
-└─────────────────────┬───────────────────────────────────┘
-                      │ Read (SQL)
-┌─────────────────────▼───────────────────────────────────┐
-│           PostgreSQL Flexible Server                    │
-│       (Star Schema: 1 fact + 4 dimensions)             │
-│   ├─ fact_sales (millions de transactions)             │
-│   ├─ dim_dates, dim_products, dim_stores, dim_inventory│
-│   └─ Views pour les alertes et résumés                │
-└─────────────────────▲───────────────────────────────────┘
-                      │ SQL Insert/Update
-┌─────────────────────┴───────────────────────────────────┐
-│       FastAPI Backend (Azure App Service)               │
-│   ├─ POST /api/v1/sales/upload-sale                    │
-│   ├─ GET  /api/v1/sales/summary                        │
-│   ├─ GET  /api/v1/inventory/low-stock                  │
-│   └─ Health checks & Monitoring                         │
-└─────────────────────▲───────────────────────────────────┘
-         │ Retrieve Secrets    │ Managed Identity
-         ▼                     ▼
-    ┌──────────────────────────────────────┐
-    │    Azure Key Vault                   │
-    │  - db-host                           │
-    │  - db-user                           │
-    │  - db-password                       │
-    └──────────────────────────────────────┘
-         ▲
-         │ HTTPS (No hardcoded credentials)
-┌────────┴──────────────────────────────────┐
-│  POS Systems, Web APIs, Mobile Apps       │
-│        (Clients sending sales data)       │
-└───────────────────────────────────────────┘
+```text
+Clients / POS
+    |
+    v
+FastAPI Backend
+    |
+    v
+PostgreSQL
+    |
+    +-- fact_sales
+    +-- dim_dates
+    +-- dim_products
+    +-- dim_stores
+    +-- dim_inventory
+    +-- vw_sales_summary
+    +-- vw_inventory_alerts
+    |
+    v
+Power BI Desktop
 ```
 
----
+En local, les services tournent avec Docker Compose :
 
-## 📊 Star Schema (Modélisation)
+- Backend FastAPI : `http://localhost:8000`
+- Documentation Swagger : `http://localhost:8000/api/v1/docs`
+- pgAdmin : `http://localhost:5050`
+- PostgreSQL : `localhost:5432`
 
-### Concept
+## Stack
 
-Le Star Schema offre :
-- **Performance optimale** pour les requêtes analytiques
-- **Clarté** avec un fait central et dimensions satellites
-- **Intégrité référentielle** via contraintes et clés étrangères
+- Python 3.11
+- FastAPI
+- PostgreSQL 15
+- Docker Compose
+- pgAdmin
+- Power BI Desktop
+- Azure CLI, Azure Key Vault et App Service en preparation cloud
 
-### Schéma
+## Lancer le projet en local
 
-```
-                  ┌─────────────┐
-                  │  dim_dates  │
-                  │─────────────│
-                  │ date_id (PK)│
-                  │ full_date   │
-                  │ day, month  │
-                  │ quarter, yr │
-                  └──────┬──────┘
-                         │
-    ┌────────────────────┼────────────────────┐
-    │                    │                    │
-    ▼                    │                    ▼
-┌──────────────┐         │            ┌──────────────────┐
-│  dim_stores  │         │            │  dim_products    │
-├──────────────┤         │            ├──────────────────┤
-│ store_id(PK) │         │            │ product_id (PK)  │
-│ store_code   │         │            │ product_code     │
-│ store_name   │         │            │ product_name     │
-│ city, region │         │            │ category         │
-└──────────────┘         │            └──────────────────┘
-    │                    │                    │
-    │            ┌───────▼────────┐           │
-    └───────────►│  fact_sales    │◄──────────┘
-             ┌──┤                │
-             │  │ date_id (FK)   │
-             │  │ product_id(FK) │
-             │  │ store_id (FK)  │
-             │  │ inventory_id(FK)
-             │  │                │
-             │  │ quantity_sold  │
-             │  │ unit_price     │
-             │  │ total_amount   │
-             │  │ net_amount     │
-             │  └────────────────┘
-             │
-    ┌────────▼──────────────┐
-    │  dim_inventory         │
-    ├────────────────────────┤
-    │ inventory_id (PK)      │
-    │ product_id (FK)        │
-    │ store_id (FK)          │
-    │ stock_level            │
-    │ reorder_point          │
-    └────────────────────────┘
-```
-
-### Tables
-
-| Table | Rows | Description |
-|-------|------|-------------|
-| **fact_sales** | Millions | Transactions de ventes (mesures: quantité, prix, montants) |
-| **dim_dates** | 365-730 | Dimension temporelle (jours, mois, trimestres, années) |
-| **dim_products** | Milliers | Dimension produits (code, nom, catégorie, fournisseur) |
-| **dim_stores** | Centaines | Dimension magasins (code, nom, région, gestionnaire) |
-| **dim_inventory** | Milliers | Dimension inventaire (stock actuel, points de réapprovisionnement) |
-
----
-
-## 🛠️ Stack Technologique
-
-### Backend
-- **FastAPI** : Framework web moderne et rapide (async)
-- **Python 3.11** : Langage de programmation
-- **Pydantic** : Validation de données avec typage fort
-- **SQLAlchemy** : ORM pour requêtes SQL asynchrones
-
-### Base de Données
-- **PostgreSQL 15** : Système de gestion relationnel robuste
-- **Connexion Pool** : `psycopg2` pour une performance optimale
-- **Views & Triggers** : Logique métier au niveau BD
-
-### Sécurité & Cloud
-- **Azure Key Vault** : Gestion des secrets (DB credentials)
-- **Azure App Service** : Hébergement serverless de l'API
-- **Managed Identity** : Authentification sans credentials hardcodées
-- **DefaultAzureCredential** : Intégration transparente Azure SDK
-
-### Monitoring & Déploiement
-- **Docker** : Containerisation de l'application
-- **Docker Compose** : Orchestration locale (dev)
-- **Azure CLI** : Infrastructure as Code
-
----
-
-## 🚀 Démarrage Rapide
-
-### 1. Prérequis
-
-```bash
-# Installations
-- Python 3.11+
-- PostgreSQL 15+
-- Docker & Docker Compose (optionnel)
-- Azure CLI (pour déploiement production)
-- Git
-```
-
-### 2. Installation Locale
-
-```bash
-# Clone du projet
-git clone https://github.com/yourusername/SmartRetail-Sync.git
-cd SmartRetail-Sync
-
-# Créer l'environnement virtuel
-python -m venv venv
-
-# Activation
-# Windows:
-venv\Scripts\activate
-# macOS/Linux:
-source venv/bin/activate
-
-# Installer les dépendances
-pip install -r backend/requirements.txt
-
-# Copier la configuration
-cp backend/.env.example backend/.env
-
-# Éditer .env avec vos paramètres PostgreSQL locaux
-```
-
-### 3. Configuration PostgreSQL (Local)
-
-```bash
-# Créer l'utilisateur et la base
-psql -U postgres -c "CREATE USER smartretail_user WITH PASSWORD 'your_password';"
-psql -U postgres -c "CREATE DATABASE smartretail_db OWNER smartretail_user;"
-
-# Appliquer le schéma
-psql -U smartretail_user -d smartretail_db -f database/schema.sql
-
-# Vérifier
-psql -U smartretail_user -d smartretail_db -c "\dt"
-```
-
-### 4. Lancer l'Application
-
-#### Localement (Direct)
-```bash
-cd backend
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-#### Avec Docker Compose
-```bash
+```powershell
 docker-compose up --build
-
-# Services disponibles:
-# - Backend:  http://localhost:8000
-# - Docs:     http://localhost:8000/api/v1/docs
-# - pgAdmin:  http://localhost:5050
 ```
 
-### 5. Test de l'API
+Puis tester :
 
-```bash
-# Health check
-curl http://localhost:8000/health
-
-# Uploader une vente
-curl -X POST http://localhost:8000/api/v1/sales/upload-sale \
-  -H "Content-Type: application/json" \
-  -d '{
-    "store_code": "STR001",
-    "transaction_id": "TXN-2024-001",
-    "cashier_id": "CASH001",
-    "payment_method": "CARD",
-    "items": [
-      {
-        "product_code": "PRD001",
-        "quantity_sold": 2,
-        "unit_price": 999.99,
-        "discount_amount": 0,
-        "tax_amount": 199.98
-      }
-    ]
-  }'
-
-# Accéder à la documentation interactive
-# Ouvrir: http://localhost:8000/api/v1/docs
+```powershell
+python test_api.py
 ```
 
----
+Endpoints principaux :
 
-## 📋 Déploiement Azure
+- `GET /health`
+- `POST /api/v1/sales/upload-sale`
+- `GET /api/v1/sales/summary`
+- `GET /api/v1/inventory/low-stock`
+- `PUT /api/v1/inventory/update`
+- `GET /api/v1/inventory/by-product/{product_code}`
 
-### 1. Créer l'Infrastructure
+## Base de donnees
 
-```bash
-# Utiliser le script de setup (PowerShell)
-.\infrastructure\setup.ps1
+Le schema PostgreSQL est dans :
 
-# OU avec le script bash
-bash infrastructure/setup.sh
-
-# Cela crée:
-# - Resource Group
-# - Azure Key Vault
-# - PostgreSQL Flexible Server
-# - App Service Plan & App Service
-# - Managed Identity avec accès Key Vault
+```text
+database/schema.sql
 ```
 
-### 2. Appliquer le Schéma PostgreSQL
+Tables principales :
 
-```bash
-# Récupérer la connexion de la BD depuis les outputs du script
-# Puis:
-psql -h <postgres-server-fqdn> -U dbadmin -d smartretail_db -f database/schema.sql
+- `fact_sales`
+- `dim_dates`
+- `dim_products`
+- `dim_stores`
+- `dim_inventory`
 
-# Ou via Azure Portal: Query Editor
+Vues analytiques :
+
+- `vw_sales_summary`
+- `vw_inventory_alerts`
+
+Des requetes de demonstration sont disponibles dans :
+
+```text
+database/demo_queries.sql
 ```
 
-### 3. Déployer le Code
+## Export Excel pour Power BI
 
-```bash
-# Créer une image Docker
-docker build -t smartretail-sync:latest -f Dockerfile .
+Un export Excel peut etre genere depuis PostgreSQL :
 
-# Pousser vers Azure Container Registry (si utilisé)
-az acr build --registry <acr-name> --image smartretail-sync:latest .
-
-# OU via Git Deployment (App Service)
-# Connecter votre repository GitHub
-# Configurer CI/CD automatique
+```powershell
+python database/export_to_excel.py
 ```
 
-### 4. Configurer les Paramètres de l'App Service
+Le fichier genere est place dans `exports/`, dossier ignore par Git afin de ne pas pousser les artefacts volumineux.
 
-```bash
-# Les secrets sont automatiquement récupérés depuis Key Vault
-# Vérifier les App Settings:
-az webapp config appsettings list \
-  --resource-group rg-smartretail-sync \
-  --name app-smartretail-sync
+## Power BI
+
+Le rapport Power BI est volontairement exclu du depot GitHub :
+
+- `powerbi/`
+- `*.pbix`
+- `*.pbit`
+- `*.xlsx`
+
+Ces fichiers sont des artefacts locaux et peuvent etre lourds. Le depot garde uniquement le code, les scripts SQL, la configuration Docker et la preparation cloud.
+
+Connexion Power BI locale :
+
+```text
+Serveur : localhost
+Base    : smartretail_db
+Mode    : Import
+User    : smartretail_user
 ```
 
----
+## Azure
 
-## 🔐 Gestion des Secrets (Architecture Hybride)
+La partie Azure est preparee dans :
 
-### Environnement Local (Development)
-
-```python
-# .env file
-DB_HOST=localhost
-DB_USER=smartretail_user
-DB_PASSWORD=local_password
-ENVIRONMENT=local
+```text
+infrastructure/setup.ps1
+infrastructure/setup.sh
 ```
 
-### Azure App Service (Production)
+Elle prevoit :
 
-```python
-# DefaultAzureCredential découvre automatiquement:
-# 1. Managed Identity (priorité)
-# 2. Environment variables
-# 3. Azure CLI credentials
+- un Resource Group ;
+- Azure Key Vault en mode Standard ;
+- PostgreSQL Flexible Server ;
+- App Service Plan et App Service ;
+- Managed Identity pour acceder aux secrets Key Vault.
 
-# Aucun mot de passe dans le code !
-```
+Etat actuel :
 
-### Configuration Intelligente (`settings.py`)
+- Azure CLI a ete installe et verifie ;
+- la connexion Azure fonctionne ;
+- aucun deploiement cloud n'a ete effectue, car le compte teste ne dispose pas d'une subscription Azure active ;
+- aucune carte bancaire n'est necessaire pour executer le projet en local.
 
-```python
-from src.config.keyvault import setup_keyvault_credentials
-from src.config.settings import settings
+Cette separation est volontaire : le projet reste demonstrable localement avec Docker, tout en montrant une architecture cloud prete a etre activee si une subscription Azure est disponible.
 
-# En production:
-if settings.ENVIRONMENT == "production":
-    setup_keyvault_credentials(settings)  # Charge depuis Key Vault
-    
-# En développement:
-# Charge depuis .env automatiquement
-```
+## Securite
 
----
+Le depot ne doit pas contenir de secrets reels.
 
-## 📊 Intégration Power BI
+Fichiers et dossiers ignores :
 
-### 1. Connexion à PostgreSQL
+- `.env`
+- logs
+- caches Python
+- exports Excel
+- fichiers Power BI
 
-```
-Power BI Desktop → Get Data → PostgreSQL Database
+Le fichier `backend/.env.example` sert seulement de modele de configuration.
 
-Server:   <postgres-fqdn>
-Database: smartretail_db
-Username: dbadmin
-Password: (from Key Vault)
-```
+## Validation effectuee
 
-### 2. Requêtes Recommandées
+Tests locaux effectues :
 
-```sql
--- Vue: Sales Summary (déjà créée)
-SELECT * FROM vw_sales_summary
-WHERE full_date >= DATE '2024-01-01'
-ORDER BY full_date DESC;
+- demarrage Docker Compose ;
+- connexion PostgreSQL ;
+- acces pgAdmin ;
+- execution de requetes SQL sur les vues analytiques ;
+- test API complet avec `test_api.py` ;
+- verification que les artefacts Power BI et Excel sont ignores par Git ;
+- verification que la partie Azure est preparee mais non deployee faute de subscription.
 
--- Vue: Low Stock Alerts
-SELECT * FROM vw_inventory_alerts
-WHERE stock_status IN ('REORDER_NEEDED', 'LOW_STOCK')
-ORDER BY stock_level ASC;
+## Structure
 
--- Analyse personnalisée
-SELECT 
-    d.year,
-    d.month_name,
-    s.region,
-    p.category,
-    SUM(f.quantity_sold) as total_qty,
-    SUM(f.net_amount) as total_revenue
-FROM fact_sales f
-JOIN dim_dates d ON f.date_id = d.date_id
-JOIN dim_stores s ON f.store_id = s.store_id
-JOIN dim_products p ON f.product_id = p.product_id
-GROUP BY d.year, d.month_name, s.region, p.category
-ORDER BY d.year DESC, d.month DESC, total_revenue DESC;
-```
-
-### 3. Dashboards Suggérés
-
-- **Sales Performance** : Revenus par région, magasin, produit
-- **Inventory Management** : Stock critique, alertes de réapprovisionnement
-- **Trend Analysis** : Évolution des ventes dans le temps
-- **Product Analysis** : Produits top-vendus, catégories
-
----
-
-## 🔍 Bonnes Pratiques Implémentées
-
-### Clean Code
-- ✅ **Modularité** : Services, modèles, routeurs séparés
-- ✅ **Type Hints** : Typage fort avec Pydantic
-- ✅ **Documentation** : Docstrings détaillées sur chaque fonction
-- ✅ **Error Handling** : Exceptions custom avec messages clairs
-- ✅ **Logging** : Logs structurés à tous les niveaux
-
-### Sécurité
-- ✅ **Secrets Management** : Azure Key Vault, pas de hardcoding
-- ✅ **Managed Identity** : Pas de credentials d'utilisateurs
-- ✅ **Validation** : Pydantic valide toutes les inputs
-- ✅ **SQL Injection** : Utilise parametrized queries
-- ✅ **CORS** : Contrôlé à la source
-
-### Performance
-- ✅ **Connection Pooling** : Réutilisation de connexions
-- ✅ **Indexes** : Stratégiquement placés sur `fact_sales`
-- ✅ **Async/Await** : FastAPI asynchrone par défaut
-- ✅ **Star Schema** : Optimisé pour les requêtes analytiques
-
-### Observabilité
-- ✅ **Health Checks** : Endpoint `/health` pour monitoring
-- ✅ **Logging Structuré** : Timestamps, niveaux, contexte
-- ✅ **Metrics** : Compteurs pour les uploads et erreurs
-- ✅ **Error Tracking** : Messages détaillés avec contexte
-
----
-
-## 📁 Structure du Projet
-
-```
+```text
 SmartRetail-Sync/
-├── backend/
-│   ├── src/
-│   │   ├── config/
-│   │   │   ├── settings.py          # Configuration app (local/Azure)
-│   │   │   └── keyvault.py          # Intégration Azure Key Vault
-│   │   ├── models/
-│   │   │   └── schemas.py           # Pydantic models (validation)
-│   │   ├── services/
-│   │   │   ├── database.py          # Connection pool, sessions
-│   │   │   └── sales_service.py     # Logique métier ventes
-│   │   ├── routers/
-│   │   │   ├── sales.py             # Endpoints /sales
-│   │   │   └── inventory.py         # Endpoints /inventory
-│   │   ├── utils/
-│   │   │   ├── logger.py            # Configuration logging
-│   │   │   └── errors.py            # Exceptions custom
-│   │   └── main.py                  # Application FastAPI
-│   ├── requirements.txt              # Dépendances Python
-│   └── .env.example                 # Template configuration
-├── database/
-│   └── schema.sql                   # Star Schema PostgreSQL
-├── infrastructure/
-│   ├── setup.ps1                    # Script setup (PowerShell)
-│   └── setup.sh                     # Script setup (Bash)
-├── docs/
-│   ├── ARCHITECTURE.md              # Détails architecture
-│   └── DATA_MODEL.md                # Détails Star Schema
-├── Dockerfile                        # Image Docker
-├── docker-compose.yml               # Orchestration locale
-└── README.md                        # Ce fichier
+|-- backend/
+|   |-- src/
+|   |-- requirements.txt
+|   `-- .env.example
+|-- database/
+|   |-- schema.sql
+|   |-- demo_queries.sql
+|   `-- export_to_excel.py
+|-- docs/
+|-- infrastructure/
+|   |-- setup.ps1
+|   `-- setup.sh
+|-- docker-compose.yml
+|-- Dockerfile
+|-- test_api.py
+|-- test_sale.json
+`-- README.md
 ```
 
----
+## Justification de publication GitHub
 
-## 🧪 Tests
+Le depot peut etre pousse sur GitHub car :
 
-```bash
-# Tests unitaires
-pytest backend/tests/ -v
-
-# Tests d'intégration (avec BD)
-pytest backend/tests/integration/ -v
-
-# Couverture de code
-pytest --cov=backend/src backend/tests/
-
-# Linting
-flake8 backend/src/
-black backend/src/ --check
-mypy backend/src/
-```
-
----
-
-## 🤝 Contribution
-
-Les contributions sont bienvenues! Please:
-
-1. Fork le projet
-2. Créer une branche (`git checkout -b feature/AmazingFeature`)
-3. Commit les changements (`git commit -m 'Add AmazingFeature'`)
-4. Push à la branche (`git push origin feature/AmazingFeature`)
-5. Ouvrir une Pull Request
-
----
-
-## 📝 Licence
-
-Ce projet est sous licence MIT - voir le fichier [LICENSE](LICENSE) pour les détails.
-
----
-
-## 📞 Support
-
-Pour les questions ou problèmes :
-- 📧 Email : support@smartretail-sync.dev
-- 🐛 Issues : [GitHub Issues](https://github.com/yourusername/SmartRetail-Sync/issues)
-- 💬 Discussions : [GitHub Discussions](https://github.com/yourusername/SmartRetail-Sync/discussions)
-
----
-
-## 🙏 Remerciements
-
-- Azure Team pour les services cloud
-- FastAPI & PostgreSQL communities
-- Tous les contributeurs
-
----
-
-**Made with ❤️ for data engineering & analytics**
+- le code backend, SQL, Docker et infrastructure est versionnable ;
+- les fichiers sensibles ou generes sont exclus par `.gitignore` ;
+- le projet est testable localement sans Azure ;
+- la partie Azure est documentee comme preparation cloud, pas comme deploiement deja realise ;
+- les fichiers Power BI restent locaux pour eviter de publier des artefacts lourds.
