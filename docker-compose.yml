@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: smartretail-postgres
+    environment:
+      POSTGRES_USER: smartretail_user
+      POSTGRES_PASSWORD: smartretail_password
+      POSTGRES_DB: smartretail_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartretail_user -d smartretail_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smartretail-network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smartretail-backend
+    environment:
+      ENVIRONMENT: local
+      DEBUG: "True"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: smartretail_db
+      DB_USER: smartretail_user
+      DB_PASSWORD: smartretail_password
+      LOG_LEVEL: DEBUG
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - smartretail-network
+
+  # pgAdmin for Database Management (Optional)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: smartretail-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@smartretail-sync.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - smartretail-network
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  smartretail-network:
+    driver: bridge

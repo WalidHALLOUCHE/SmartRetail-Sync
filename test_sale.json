@@ -1,0 +1,15 @@
+﻿{
+  "store_code": "STR001",
+  "transaction_id": "TEST20260429-REAL-001",
+  "cashier_id": "CASHIER01",
+  "payment_method": "CASH",
+  "items": [
+    {
+      "product_code": "PRD001",
+      "quantity_sold": 2,
+      "unit_price": 19.99,
+      "discount_amount": 0,
+      "tax_amount": 0
+    }
+  ]
+}
