@@ -58,6 +58,9 @@ exports/
 *.pbit
 *.xlsx
 
+# Raw screenshots kept locally
+img/Capture d*cran*.png
+
 # Database
 *.db
 *.sqlite

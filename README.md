@@ -44,6 +44,26 @@ En local, les services tournent avec Docker Compose :
 - pgAdmin : `http://localhost:5050`
 - PostgreSQL : `localhost:5432`
 
+## Captures
+
+### Docker Compose
+
+![Docker containers](img/docker.png)
+
+### Documentation API Swagger
+
+![Swagger sales upload endpoint](img/swagger-sales-upload.png)
+
+### Requetes SQL dans pgAdmin
+
+![Sales summary in pgAdmin](img/pgadmin-sales-summary.png)
+
+![Inventory alerts in pgAdmin](img/pgadmin-inventory-alerts.png)
+
+### Brouillon Power BI
+
+![Power BI dashboard draft](img/powerbi-dashboard-draft.png)
+
 ## Stack
 
 - Python 3.11
